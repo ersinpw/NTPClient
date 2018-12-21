@@ -85,7 +85,7 @@ bool NTPClient::forceUpdate() {
   uint32_t lowWord = word(this->_packetBuffer[42], this->_packetBuffer[43]);
   // combine the four bytes (two words) into a long integer
   // this is NTP time (seconds since Jan 1 1900):
-  unsigned long secsSince1900 = highWord << 16 | lowWord;
+  uint32_t secsSince1900 = highWord << 16 | lowWord;
   this->_currentEpoc = secsSince1900 - SEVENZYYEARS;
   
   // Get the milliseconds. NTP epoch is in seconds, in 32.32 fixed-point format.
@@ -94,7 +94,7 @@ bool NTPClient::forceUpdate() {
                  | (uint32_t) this->_packetBuffer[45] << 16
                  | (uint32_t) this->_packetBuffer[46] <<  8
                  | (uint32_t) this->_packetBuffer[47] <<  0;
-  this->_currentEpocMillis = (frac * 1000) >> 32;
+  this->_currentEpocMicrosec = (frac * 1000000) >> 32;
 
   return true;
 }
@@ -108,10 +108,19 @@ bool NTPClient::update() {
   return true;
 }
 
-unsigned long NTPClient::getEpochTime() const {
+uint32_t NTPClient::getEpochTime() const {
   return this->_timeOffset + // User offset
          this->_currentEpoc + // Epoc returned by the NTP server
-         ((millis() - this->_lastUpdate) / 1000); // Time since last update
+         ((millis() - this->_lastUpdate + this->_currentEpocMicrosec/1000) / 1000); // Time since last update
+}
+
+uint64_t NTPClient::getEpochTimeMillisec() const {
+  // TODO:
+  // 1. switch from millis to micros for improved accuracy?
+  // 2. handle micros wrap-around.
+  return (uint64_t)this->_timeOffset * 1000
+       + (uint64_t)this->_currentEpoc * 1000
+       + (uint64_t)millis() - this->_lastUpdate + this->_currentEpocMicrosec / 1000;
 }
 
 int NTPClient::getDay() const {
