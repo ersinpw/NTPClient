@@ -81,13 +81,20 @@ bool NTPClient::forceUpdate() {
 
   this->_udp->read(this->_packetBuffer, NTP_PACKET_SIZE);
 
-  unsigned long highWord = word(this->_packetBuffer[40], this->_packetBuffer[41]);
-  unsigned long lowWord = word(this->_packetBuffer[42], this->_packetBuffer[43]);
+  uint32_t highWord = word(this->_packetBuffer[40], this->_packetBuffer[41]);
+  uint32_t lowWord = word(this->_packetBuffer[42], this->_packetBuffer[43]);
   // combine the four bytes (two words) into a long integer
   // this is NTP time (seconds since Jan 1 1900):
   unsigned long secsSince1900 = highWord << 16 | lowWord;
-
   this->_currentEpoc = secsSince1900 - SEVENZYYEARS;
+  
+  // Get the milliseconds. NTP epoch is in seconds, in 32.32 fixed-point format.
+  // See https://arduino.stackexchange.com/questions/49567/synching-local-clock-usign-ntp-to-milliseconds
+  uint64_t frac  = (uint32_t) this->_packetBuffer[44] << 24
+                 | (uint32_t) this->_packetBuffer[45] << 16
+                 | (uint32_t) this->_packetBuffer[46] <<  8
+                 | (uint32_t) this->_packetBuffer[47] <<  0;
+  this->_currentEpocMillis = (frac * 1000) >> 32;
 
   return true;
 }
