@@ -11,16 +11,17 @@
 class NTPClient {
   private:
     UDP*          _udp;
-    bool          _udpSetup       = false;
+    bool          _udpSetup          = false;
 
-    const char*   _poolServerName = "pool.ntp.org"; // Default time server
-    int           _port           = NTP_DEFAULT_LOCAL_PORT;
-    long          _timeOffset     = 0;
+    const char*   _poolServerName    = "pool.ntp.org"; // Default time server
+    int           _port              = NTP_DEFAULT_LOCAL_PORT;
+    long          _timeOffset        = 0;
 
-    unsigned long _updateInterval = 60000;  // In ms
+    uint32_t _updateInterval    = 60000;  // In ms
 
-    unsigned long _currentEpoc    = 0;      // In s
-    unsigned long _lastUpdate     = 0;      // In ms
+    uint32_t _currentEpoc       = 0;      // In s
+    uint32_t _currentEpocMillis = 0;      // Epoch in milliseconds is _currentEpoc + _currentEpocMillis
+    uint32_t _lastUpdate        = 0;      // In ms
 
     byte          _packetBuffer[NTP_PACKET_SIZE];
 
@@ -79,7 +80,7 @@ class NTPClient {
      * Set the update interval to another frequency. E.g. useful when the
      * timeOffset should not be set in the constructor
      */
-    void setUpdateInterval(unsigned long updateInterval);
+    void setUpdateInterval(uint32_t updateInterval);
 
     /**
      * @return time formatted like `hh:mm:ss`
@@ -89,7 +90,7 @@ class NTPClient {
     /**
      * @return time in seconds since Jan. 1, 1970
      */
-    unsigned long getEpochTime() const;
+    uint32_t getEpochTime() const;
 
     /**
      * Stops the underlying UDP client
