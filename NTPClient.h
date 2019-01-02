@@ -11,17 +11,17 @@
 class NTPClient {
   private:
     UDP*          _udp;
-    bool          _udpSetup          = false;
+    bool          _udpSetup       = false;
 
-    const char*   _poolServerName    = "pool.ntp.org"; // Default time server
-    int           _port              = NTP_DEFAULT_LOCAL_PORT;
-    long          _timeOffset        = 0;
+    const char*   _poolServerName = "pool.ntp.org"; // Default time server
+    int           _port           = NTP_DEFAULT_LOCAL_PORT;
+    long          _timeOffset     = 0;
 
-    uint32_t _updateInterval    = 60000;  // In ms
+    uint32_t _updateInterval = 60000;  // In ms
 
-    uint32_t _currentEpoc       = 0;      // In s
-    uint32_t _currentEpocMillis = 0;      // Epoch in milliseconds is _currentEpoc + _currentEpocMillis
-    uint32_t _lastUpdate        = 0;      // In ms
+    uint32_t _currentEpoc    = 0;  // In s
+    uint64_t  _currentEpocMicros  = 0;  // In us
+    uint32_t _lastUpdate     = 0;  // In us
 
     byte          _packetBuffer[NTP_PACKET_SIZE];
 
@@ -32,7 +32,7 @@ class NTPClient {
     NTPClient(UDP& udp, long timeOffset);
     NTPClient(UDP& udp, const char* poolServerName);
     NTPClient(UDP& udp, const char* poolServerName, long timeOffset);
-    NTPClient(UDP& udp, const char* poolServerName, long timeOffset, unsigned long updateInterval);
+    NTPClient(UDP& udp, const char* poolServerName, long timeOffset, uint32_t updateInterval);
 
     /**
      * Set time server name
@@ -50,6 +50,8 @@ class NTPClient {
      * Starts the underlying UDP client with the specified local port
      */
     void begin(int port);
+
+    uint32_t lastUpdate() const;
 
     /**
      * This should be called in the main loop of your application. By default an update from the NTP Server is only
@@ -91,6 +93,16 @@ class NTPClient {
      * @return time in seconds since Jan. 1, 1970
      */
     uint32_t getEpochTime() const;
+
+    /**
+     * @return time in milliseconds since Jan. 1, 1970
+     */
+    uint64_t getEpochTimeMillis() const;
+
+     /**
+     * @return UTC time in milliseconds since Jan. 1, 1970
+     */
+    uint64_t getEpochTimeMillisUTC() const;
 
     /**
      * Stops the underlying UDP client

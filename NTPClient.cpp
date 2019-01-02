@@ -41,7 +41,7 @@ NTPClient::NTPClient(UDP& udp, const char* poolServerName, long timeOffset) {
   this->_poolServerName = poolServerName;
 }
 
-NTPClient::NTPClient(UDP& udp, const char* poolServerName, long timeOffset, unsigned long updateInterval) {
+NTPClient::NTPClient(UDP& udp, const char* poolServerName, long timeOffset, uint32_t updateInterval) {
   this->_udp            = &udp;
   this->_timeOffset     = timeOffset;
   this->_poolServerName = poolServerName;
@@ -71,13 +71,13 @@ bool NTPClient::forceUpdate() {
   byte timeout = 0;
   int cb = 0;
   do {
-    delay ( 10 );
+    delay(10);
     cb = this->_udp->parsePacket();
     if (timeout > 100) return false; // timeout after 1000 ms
     timeout++;
   } while (cb == 0);
 
-  this->_lastUpdate = millis() - (10 * (timeout + 1)); // Account for delay in reading the time
+  this->_lastUpdate = micros() - (10000 * (timeout + 1)); // Account for delay in reading the time
 
   this->_udp->read(this->_packetBuffer, NTP_PACKET_SIZE);
 
@@ -87,64 +87,81 @@ bool NTPClient::forceUpdate() {
   // this is NTP time (seconds since Jan 1 1900):
   uint32_t secsSince1900 = highWord << 16 | lowWord;
   this->_currentEpoc = secsSince1900 - SEVENZYYEARS;
-  
-  // Get the milliseconds. NTP epoch is in seconds, in 32.32 fixed-point format.
-  // See https://arduino.stackexchange.com/questions/49567/synching-local-clock-usign-ntp-to-milliseconds
-  uint64_t frac  = (uint32_t) this->_packetBuffer[44] << 24
-                 | (uint32_t) this->_packetBuffer[45] << 16
-                 | (uint32_t) this->_packetBuffer[46] <<  8
-                 | (uint32_t) this->_packetBuffer[47] <<  0;
-  this->_currentEpocMicrosec = (frac * 1000000) >> 32;
+
+  // https://arduino.stackexchange.com/questions/49567/synching-local-clock-usign-ntp-to-milliseconds
+  uint64_t frac = (uint32_t) this->_packetBuffer[44] << 24
+                | (uint32_t) this->_packetBuffer[45] << 16
+                | (uint32_t) this->_packetBuffer[46] <<  8
+                | (uint32_t) this->_packetBuffer[47] <<  0;
+  this->_currentEpocMicros = (frac * 1000000L) >> 32;
 
   return true;
 }
 
+uint32_t NTPClient::lastUpdate() const {
+  uint32_t micros_offset = micros();
+  // account for micros wrap-around (4294967296 = 2^32)
+  if(micros_offset < this->_lastUpdate)
+    return 4294967296 - this->_lastUpdate + micros_offset;
+  else
+    return micros_offset - this->_lastUpdate;
+}
+
 bool NTPClient::update() {
-  if ((millis() - this->_lastUpdate >= this->_updateInterval)     // Update after _updateInterval
-    || this->_lastUpdate == 0) {                                // Update if there was no update yet.
-    if (!this->_udpSetup) this->begin();                         // setup the UDP client if needed
+  if (this->lastUpdate()/1000 >= this->_updateInterval // Update after _updateInterval
+    || this->_lastUpdate == 0) {                                    // Update if there was no update yet.
+    if (!this->_udpSetup) this->begin();                            // setup the UDP client if needed
     return this->forceUpdate();
   }
   return true;
 }
 
+// NOTE: the following two functions assume that the update interval is < ~71 minutes.
+// Otherwise, the lastUpdate in microseconds could wrap-around multiple times.
 uint32_t NTPClient::getEpochTime() const {
+  // _currentEpocMicros will never be > 1e6, so as long as offsetMicros is < 2^32-(1e6+5e5),
+  // the following won't overflow. I.e., the update interval must be < ~70 minutes.
+  uint32_t offset_sec = (uint32_t)((this->_currentEpocMicros + this->lastUpdate() + 500000L) / 1000000L);
   return this->_timeOffset + // User offset
          this->_currentEpoc + // Epoc returned by the NTP server
-         ((millis() - this->_lastUpdate + this->_currentEpocMicrosec/1000) / 1000); // Time since last update
+         offset_sec; // Time since last update
 }
 
-uint64_t NTPClient::getEpochTimeMillisec() const {
-  // TODO:
-  // 1. switch from millis to micros for improved accuracy?
-  // 2. handle micros wrap-around.
-  return (uint64_t)this->_timeOffset * 1000
-       + (uint64_t)this->_currentEpoc * 1000
-       + (uint64_t)millis() - this->_lastUpdate + this->_currentEpocMicrosec / 1000;
+uint64_t NTPClient::getEpochTimeMillis() const {
+  uint64_t offset_ms = (this->_currentEpocMicros + this->lastUpdate() + 500L) / 1000L;
+  return ((uint64_t)this->_timeOffset + this->_currentEpoc) * 1000 + offset_ms;
+}
+
+uint64_t NTPClient::getEpochTimeMillisUTC() const {
+  uint64_t offset_ms = (this->_currentEpocMicros + this->lastUpdate() + 500L) / 1000L;
+  return (uint64_t)this->_currentEpoc * 1000 + offset_ms;
 }
 
 int NTPClient::getDay() const {
-  return (((this->getEpochTime()  / 86400L) + 4 ) % 7); //0 is Sunday
+  return (((this->getEpochTime() / 86400L) + 4 ) % 7); //0 is Sunday
 }
+
 int NTPClient::getHours() const {
-  return ((this->getEpochTime()  % 86400L) / 3600);
+  return ((this->getEpochTime() % 86400L) / 3600);
 }
+
 int NTPClient::getMinutes() const {
   return ((this->getEpochTime() % 3600) / 60);
 }
+
 int NTPClient::getSeconds() const {
   return (this->getEpochTime() % 60);
 }
 
 String NTPClient::getFormattedTime() const {
-  unsigned long rawTime = this->getEpochTime();
-  unsigned long hours = (rawTime % 86400L) / 3600;
+  uint32_t rawTime = this->getEpochTime();
+  uint32_t hours = (rawTime % 86400L) / 3600;
   String hoursStr = hours < 10 ? "0" + String(hours) : String(hours);
 
-  unsigned long minutes = (rawTime % 3600) / 60;
+  uint32_t minutes = (rawTime % 3600) / 60;
   String minuteStr = minutes < 10 ? "0" + String(minutes) : String(minutes);
 
-  unsigned long seconds = rawTime % 60;
+  uint32_t seconds = rawTime % 60;
   String secondStr = seconds < 10 ? "0" + String(seconds) : String(seconds);
 
   return hoursStr + ":" + minuteStr + ":" + secondStr;
@@ -160,7 +177,7 @@ void NTPClient::setTimeOffset(int timeOffset) {
   this->_timeOffset     = timeOffset;
 }
 
-void NTPClient::setUpdateInterval(unsigned long updateInterval) {
+void NTPClient::setUpdateInterval(uint32_t updateInterval) {
   this->_updateInterval = updateInterval;
 }
 
