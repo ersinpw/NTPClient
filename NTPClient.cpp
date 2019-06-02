@@ -117,7 +117,7 @@ bool NTPClient::update() {
     if (!this->_udpSetup) this->begin();                            // setup the UDP client if needed
     return this->forceUpdate();
   }
-  return true;
+  return false;
 }
 
 // NOTE: the following two functions assume that the update interval is < ~71 minutes.
